@@ -36,14 +36,14 @@ AddressSpace::AddressSpace(size_t code_cache_size)
 AddressSpace::~AddressSpace() = default;
 
 CodePtr AddressSpace::Get(IR::LocationDescriptor descriptor) {
-    if (const auto iter = block_entries.find(descriptor); iter != block_entries.end()) {
+    if (const auto iter = GetBlockEntries().find(descriptor); iter != GetBlockEntries().end()) {
         return iter->second;
     }
     return nullptr;
 }
 
 std::optional<IR::LocationDescriptor> AddressSpace::ReverseGetLocation(CodePtr host_pc) {
-    if (auto iter = reverse_block_entries.upper_bound(host_pc); iter != reverse_block_entries.begin()) {
+    if (auto iter = GetReverseBlockEntries().upper_bound(host_pc); iter != GetReverseBlockEntries().begin()) {
         // upper_bound locates the first value greater than host_pc, so we need to decrement
         --iter;
         return iter->second;
@@ -52,7 +52,7 @@ std::optional<IR::LocationDescriptor> AddressSpace::ReverseGetLocation(CodePtr h
 }
 
 CodePtr AddressSpace::ReverseGetEntryPoint(CodePtr host_pc) {
-    if (auto iter = reverse_block_entries.upper_bound(host_pc); iter != reverse_block_entries.begin()) {
+    if (auto iter = GetReverseBlockEntries().upper_bound(host_pc); iter != GetReverseBlockEntries().begin()) {
         // upper_bound locates the first value greater than host_pc, so we need to decrement
         --iter;
         return iter->first;
@@ -74,8 +74,8 @@ void AddressSpace::InvalidateBasicBlocks(const tsl::robin_set<IR::LocationDescri
     UnprotectCodeMemory();
 
     for (const auto& descriptor : descriptors) {
-        const auto iter = block_entries.find(descriptor);
-        if (iter == block_entries.end()) {
+        const auto iter = GetBlockEntries().find(descriptor);
+        if (iter == GetBlockEntries().end()) {
             continue;
         }
 
@@ -83,7 +83,7 @@ void AddressSpace::InvalidateBasicBlocks(const tsl::robin_set<IR::LocationDescri
         // and the currently executing block may have references to itself which need to be unlinked.
         RelinkForDescriptor(descriptor, nullptr);
 
-        block_entries.erase(iter);
+        GetBlockEntries().erase(iter);
     }
 
     ProtectCodeMemory();
@@ -91,9 +91,13 @@ void AddressSpace::InvalidateBasicBlocks(const tsl::robin_set<IR::LocationDescri
 
 void AddressSpace::ClearCache() {
     block_entries.clear();
+    hook_block_entries.clear();
     reverse_block_entries.clear();
+    hook_reverse_block_entries.clear();
     block_infos.clear();
+    hook_block_infos.clear();
     block_references.clear();
+    hook_block_references.clear();
     code.set_offset(prelude_info.end_of_prelude);
 }
 
@@ -101,6 +105,46 @@ void AddressSpace::DumpDisassembly() const {
     for (u32* ptr = mem.ptr(); ptr < code.xptr<u32*>(); ptr++) {
         std::printf("%s", Common::DisassembleAArch64(*ptr, mcl::bit_cast<u64>(ptr)).c_str());
     }
+}
+
+void AddressSpace::HookEnter() {
+    is_hook = true;
+}
+
+void AddressSpace::HookLeave() {
+    is_hook = false;
+}
+
+const tsl::robin_map<IR::LocationDescriptor, CodePtr>& AddressSpace::GetBlockEntries() const {
+    return (is_hook) ? hook_block_entries : block_entries;
+}
+
+tsl::robin_map<IR::LocationDescriptor, CodePtr>& AddressSpace::GetBlockEntries() {
+    return (is_hook) ? hook_block_entries : block_entries;
+}
+
+const std::map<CodePtr, IR::LocationDescriptor>& AddressSpace::GetReverseBlockEntries() const {
+    return (is_hook) ? hook_reverse_block_entries : reverse_block_entries;
+}
+
+std::map<CodePtr, IR::LocationDescriptor>& AddressSpace::GetReverseBlockEntries() {
+    return (is_hook) ? hook_reverse_block_entries : reverse_block_entries;
+}
+
+const tsl::robin_map<CodePtr, EmittedBlockInfo>& AddressSpace::GetBlockInfos() const {
+    return (is_hook) ? hook_block_infos : block_infos;
+}
+
+tsl::robin_map<CodePtr, EmittedBlockInfo>& AddressSpace::GetBlockInfos() {
+    return (is_hook) ? hook_block_infos : block_infos;
+}
+
+const tsl::robin_map<IR::LocationDescriptor, tsl::robin_set<CodePtr>>& AddressSpace::GetBlockReferences() const {
+    return (is_hook) ? hook_block_references : block_references;
+}
+
+tsl::robin_map<IR::LocationDescriptor, tsl::robin_set<CodePtr>>& AddressSpace::GetBlockReferences() {
+    return (is_hook) ? hook_block_references : block_references;
 }
 
 size_t AddressSpace::GetRemainingSize() {
@@ -116,9 +160,9 @@ EmittedBlockInfo AddressSpace::Emit(IR::Block block) {
 
     EmittedBlockInfo block_info = EmitArm64(code, std::move(block), GetEmitConfig(), fastmem_manager);
 
-    ASSERT(block_entries.insert({block.Location(), block_info.entry_point}).second);
-    ASSERT(reverse_block_entries.insert({block_info.entry_point, block.Location()}).second);
-    ASSERT(block_infos.insert({block_info.entry_point, block_info}).second);
+    ASSERT(GetBlockEntries().insert({block.Location(), block_info.entry_point}).second);
+    ASSERT(GetReverseBlockEntries().insert({block_info.entry_point, block.Location()}).second);
+    ASSERT(GetBlockInfos().insert({block_info.entry_point, block_info}).second);
 
     Link(block_info);
     RelinkForDescriptor(block.Location(), block_info.entry_point);
@@ -266,7 +310,7 @@ void AddressSpace::Link(EmittedBlockInfo& block_info) {
     }
 
     for (auto [target_descriptor, list] : block_info.block_relocations) {
-        block_references[target_descriptor].insert(block_info.entry_point);
+        GetBlockReferences()[target_descriptor].insert(block_info.entry_point);
         LinkBlockLinks(block_info.entry_point, Get(target_descriptor), list);
     }
 }
@@ -301,8 +345,8 @@ void AddressSpace::LinkBlockLinks(const CodePtr entry_point, const CodePtr targe
 }
 
 void AddressSpace::RelinkForDescriptor(IR::LocationDescriptor target_descriptor, CodePtr target_ptr) {
-    for (auto code_ptr : block_references[target_descriptor]) {
-        if (auto block_iter = block_infos.find(code_ptr); block_iter != block_infos.end()) {
+    for (auto code_ptr : GetBlockReferences()[target_descriptor]) {
+        if (auto block_iter = GetBlockInfos().find(code_ptr); block_iter != GetBlockInfos().end()) {
             const EmittedBlockInfo& block_info = block_iter->second;
 
             if (auto relocation_iter = block_info.block_relocations.find(target_descriptor); relocation_iter != block_info.block_relocations.end()) {
@@ -323,8 +367,8 @@ FakeCall AddressSpace::FastmemCallback(u64 host_pc) {
             goto fail;
         }
 
-        const auto block_info = block_infos.find(entry_point);
-        if (block_info == block_infos.end()) {
+        const auto block_info = GetBlockInfos().find(entry_point);
+        if (block_info == GetBlockInfos().end()) {
             goto fail;
         }
 

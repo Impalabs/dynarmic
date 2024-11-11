@@ -72,6 +72,14 @@ struct Jit::Impl final {
         HaltExecution(HaltReason::CacheInvalidation);
     }
 
+    void HookEnter() {
+        current_address_space.HookEnter();
+    }
+
+    void HookLeave() {
+        current_address_space.HookLeave();
+    }
+
     void Reset() {
         current_state = {};
     }
@@ -213,6 +221,14 @@ void Jit::ClearCache() {
 
 void Jit::InvalidateCacheRange(std::uint64_t start_address, std::size_t length) {
     impl->InvalidateCacheRange(start_address, length);
+}
+
+void Jit::HookEnter() {
+    impl->HookEnter();
+}
+
+void Jit::HookLeave() {
+    impl->HookLeave();
 }
 
 void Jit::Reset() {

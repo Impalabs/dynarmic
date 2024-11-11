@@ -45,6 +45,10 @@ public:
 
     void DumpDisassembly() const;
 
+    // Hooking
+    void HookEnter();
+    void HookLeave();
+
 protected:
     virtual EmitConfig GetEmitConfig() = 0;
     virtual void RegisterNewBasicBlock(const IR::Block& block, const EmittedBlockInfo& block_info) = 0;
@@ -73,12 +77,31 @@ protected:
     oaknut::CodeBlock mem;
     oaknut::CodeGenerator code;
 
+    // Hooking
+    const tsl::robin_map<IR::LocationDescriptor, CodePtr>& GetBlockEntries() const;
+    tsl::robin_map<IR::LocationDescriptor, CodePtr>& GetBlockEntries();
+
+    const std::map<CodePtr, IR::LocationDescriptor>& GetReverseBlockEntries() const;
+    std::map<CodePtr, IR::LocationDescriptor>& GetReverseBlockEntries();
+
+    const tsl::robin_map<CodePtr, EmittedBlockInfo>& GetBlockInfos() const;
+    tsl::robin_map<CodePtr, EmittedBlockInfo>& GetBlockInfos();
+
+    const tsl::robin_map<IR::LocationDescriptor, tsl::robin_set<CodePtr>>& GetBlockReferences() const;
+    tsl::robin_map<IR::LocationDescriptor, tsl::robin_set<CodePtr>>& GetBlockReferences();
+
+    bool is_hook = false;
+
     // A IR::LocationDescriptor will have one current CodePtr.
     // However, there can be multiple other CodePtrs which are older, previously invalidated blocks.
     tsl::robin_map<IR::LocationDescriptor, CodePtr> block_entries;
+    tsl::robin_map<IR::LocationDescriptor, CodePtr> hook_block_entries;
     std::map<CodePtr, IR::LocationDescriptor> reverse_block_entries;
+    std::map<CodePtr, IR::LocationDescriptor> hook_reverse_block_entries;
     tsl::robin_map<CodePtr, EmittedBlockInfo> block_infos;
+    tsl::robin_map<CodePtr, EmittedBlockInfo> hook_block_infos;
     tsl::robin_map<IR::LocationDescriptor, tsl::robin_set<CodePtr>> block_references;
+    tsl::robin_map<IR::LocationDescriptor, tsl::robin_set<CodePtr>> hook_block_references;
 
     ExceptionHandler exception_handler;
     FastmemManager fastmem_manager;
