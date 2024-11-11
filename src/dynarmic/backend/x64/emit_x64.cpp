@@ -48,8 +48,8 @@ EmitX64::EmitX64(BlockOfCode& code)
 EmitX64::~EmitX64() = default;
 
 std::optional<EmitX64::BlockDescriptor> EmitX64::GetBasicBlock(IR::LocationDescriptor descriptor) const {
-    const auto iter = block_descriptors.find(descriptor);
-    if (iter == block_descriptors.end()) {
+    const auto iter = GetBlockDescriptors().find(descriptor);
+    if (iter == GetBlockDescriptors().end()) {
         return std::nullopt;
     }
     return iter->second;
@@ -79,8 +79,8 @@ void EmitX64::EmitCallHostFunction(EmitContext& ctx, IR::Inst* inst) {
 void EmitX64::PushRSBHelper(Xbyak::Reg64 loc_desc_reg, Xbyak::Reg64 index_reg, IR::LocationDescriptor target) {
     using namespace Xbyak::util;
 
-    const auto iter = block_descriptors.find(target);
-    CodePtr target_code_ptr = iter != block_descriptors.end()
+    const auto iter = GetBlockDescriptors().find(target);
+    CodePtr target_code_ptr = iter != GetBlockDescriptors().end()
                                 ? iter->second.entrypoint
                                 : code.GetReturnFromRunCodeAddress();
 
@@ -339,7 +339,7 @@ EmitX64::BlockDescriptor EmitX64::RegisterBlock(const IR::LocationDescriptor& de
     Patch(descriptor, entrypoint);
 
     BlockDescriptor block_desc{entrypoint, size};
-    block_descriptors.insert({IR::LocationDescriptor{descriptor.Value()}, block_desc});
+    GetBlockDescriptors().insert({IR::LocationDescriptor{descriptor.Value()}, block_desc});
     return block_desc;
 }
 
@@ -387,8 +387,25 @@ void EmitX64::Unpatch(const IR::LocationDescriptor& target_desc) {
     }
 }
 
+void EmitX64::HookEnter() {
+    is_hook = true;
+}
+
+void EmitX64::HookLeave() {
+    is_hook = false;
+}
+
+const tsl::robin_map<IR::LocationDescriptor, EmitX64::BlockDescriptor>& EmitX64::GetBlockDescriptors() const {
+    return (is_hook) ? hook_block_descriptors : block_descriptors;
+}
+
+tsl::robin_map<IR::LocationDescriptor, EmitX64::BlockDescriptor>& EmitX64::GetBlockDescriptors() {
+    return (is_hook) ? hook_block_descriptors : block_descriptors;
+}
+
 void EmitX64::ClearCache() {
     block_descriptors.clear();
+    hook_block_descriptors.clear();
     patch_information.clear();
 
     PerfMapClear();
@@ -401,14 +418,14 @@ void EmitX64::InvalidateBasicBlocks(const tsl::robin_set<IR::LocationDescriptor>
     };
 
     for (const auto& descriptor : locations) {
-        const auto it = block_descriptors.find(descriptor);
-        if (it == block_descriptors.end()) {
+        const auto it = GetBlockDescriptors().find(descriptor);
+        if (it == GetBlockDescriptors().end()) {
             continue;
         }
 
         Unpatch(descriptor);
 
-        block_descriptors.erase(it);
+        GetBlockDescriptors().erase(it);
     }
 }
 

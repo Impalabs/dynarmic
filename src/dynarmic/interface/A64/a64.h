@@ -49,6 +49,16 @@ public:
     void InvalidateCacheRange(std::uint64_t start_address, std::size_t length);
 
     /**
+     * Switches the emitter to hook mode.
+     */
+    void HookEnter();
+
+    /**
+     * Switches the emitter to normal mode.
+     */
+    void HookLeave();
+
+    /**
      * Reset CPU state to state at startup. Does not clear code cache.
      * Cannot be called from a callback.
      */

@@ -126,6 +126,14 @@ public:
         HaltExecution(HaltReason::CacheInvalidation);
     }
 
+    void HookEnter() {
+        emitter.HookEnter();
+    }
+
+    void HookLeave() {
+        emitter.HookEnter();
+    }
+
     void Reset() {
         ASSERT(!is_executing);
         jit_state = {};
@@ -344,6 +352,14 @@ void Jit::ClearCache() {
 
 void Jit::InvalidateCacheRange(u64 start_address, size_t length) {
     impl->InvalidateCacheRange(start_address, length);
+}
+
+void Jit::HookEnter() {
+    impl->HookEnter();
+}
+
+void Jit::HookLeave() {
+    impl->HookLeave();
 }
 
 void Jit::Reset() {

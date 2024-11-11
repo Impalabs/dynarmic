@@ -124,6 +124,14 @@ struct Jit::Impl {
         HaltExecution(HaltReason::CacheInvalidation);
     }
 
+    void HookEnter() {
+        emitter.HookEnter();
+    }
+
+    void HookLeave() {
+        emitter.HookEnter();
+    }
+
     void Reset() {
         ASSERT(!jit_interface->is_executing);
         jit_state = {};
@@ -286,6 +294,14 @@ void Jit::ClearCache() {
 
 void Jit::InvalidateCacheRange(std::uint32_t start_address, std::size_t length) {
     impl->InvalidateCacheRange(start_address, length);
+}
+
+void Jit::HookEnter() {
+    impl->HookEnter();
+}
+
+void Jit::HookLeave() {
+    impl->HookLeave();
 }
 
 void Jit::Reset() {

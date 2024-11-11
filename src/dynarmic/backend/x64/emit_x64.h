@@ -90,6 +90,10 @@ public:
     /// Invalidates a selection of basic blocks.
     void InvalidateBasicBlocks(const tsl::robin_set<IR::LocationDescriptor>& locations);
 
+    // Hooking
+    void HookEnter();
+    void HookLeave();
+
 protected:
     // Microinstruction emitters
 #define OPCODE(name, type, ...) void Emit##name(EmitContext& ctx, IR::Inst* inst);
@@ -135,10 +139,16 @@ protected:
     virtual void EmitPatchJmp(const IR::LocationDescriptor& target_desc, CodePtr target_code_ptr = nullptr) = 0;
     virtual void EmitPatchMovRcx(CodePtr target_code_ptr = nullptr) = 0;
 
+    // Hooking
+    const tsl::robin_map<IR::LocationDescriptor, BlockDescriptor>& GetBlockDescriptors() const;
+    tsl::robin_map<IR::LocationDescriptor, BlockDescriptor>& GetBlockDescriptors(); 
+
     // State
+    bool is_hook = false;
     BlockOfCode& code;
     ExceptionHandler exception_handler;
     tsl::robin_map<IR::LocationDescriptor, BlockDescriptor> block_descriptors;
+    tsl::robin_map<IR::LocationDescriptor, BlockDescriptor> hook_block_descriptors;
     tsl::robin_map<IR::LocationDescriptor, PatchInformation> patch_information;
 };
 
